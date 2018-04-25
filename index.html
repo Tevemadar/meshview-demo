@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>NXTView</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width">
+        <style>
+            body{
+                margin: 0;
+                padding: 0;
+            }
+            canvas{
+                position: absolute;
+                display: block;
+            }
+            #toprow{
+                width: 100%;
+                display: block;
+                background: #F0F0FF;
+            }
+            #ptslist{
+                position: absolute;
+                width: 150px;
+                display: block;
+                background: #F0F0FF;
+                overflow-y: scroll;
+                resize: horizontal;
+            }
+            #meshlist{
+                position: absolute;
+                width: 150px;
+                display: block;
+                background: #F0F0FF;
+                overflow: scroll;
+                /*resize: horizontal;*/
+            }
+        </style>
+        <script src="mesh.js"></script>
+        <script src="points.js"></script>
+        <script src="shaders.js"></script>
+        <script src="matrix.js"></script>
+        <script>
+            function startup(){
+                init();
+                var xhr=new XMLHttpRequest();
+                xhr.open("GET","WHS_SD_rat_atlas_v2.json");
+                xhr.onload=jsonready;
+                xhr.send();
+            }
+            
+            var atlas;
+            var loading=0;
+            function jsonready(event){
+                atlas=JSON.parse(event.target.responseText);
+                atlas.forEach(function(elem,idx){
+                    var img=document.createElement("img");
+                    img.onload=imgLoad;
+                    img.src="WHS_SD_rat_atlas_v2/"+elem.idx+".png";
+                    img.atlasindex=idx;
+                });
+                
+                meshtable();
+                progress();
+            }
+            function progress(){
+                document.getElementById("counter").innerHTML=loading+"/"+atlas.length;
+            }
+            
+            var gl;
+            var progs;
+            function init(){
+                var cnv=document.getElementById("cnv");
+                cnv.width=window.innerWidth;
+                cnv.height=window.innerHeight-cnv.offsetTop-1;
+                
+                var lst=document.getElementById("ptslist");
+                lst.style.height=(window.innerHeight-lst.offsetTop-1)+"px";
+                
+                lst=document.getElementById("meshlist");
+                lst.style.height=(window.innerHeight-lst.offsetTop-1)+"px";
+                lst.style.left=(window.innerWidth-lst.offsetWidth-1)+"px";
+        
+                gl=cnv.getContext("webgl",{stencil:true});
+
+                progs=buildshaders(gl);
+            }
+            
+            function imgLoad(event){
+                loading++;
+                progress();
+                var img=event.target;
+                var canvas=document.createElement("canvas");
+                var w=img.width;
+                var h=img.height;
+                canvas.width=w;
+                canvas.height=h;
+                var ctx=canvas.getContext("2d");
+                ctx.drawImage(img,0,0);
+                var raw=ctx.getImageData(0,0,w,h).data;
+                for(var i=0;i<w*h;i++){
+                    for(var j=0;j<3;j++)
+                        raw[i*3+j]=raw[i*4+j];
+                }
+                
+                var mesh=new Mesh(raw.buffer);
+                mesh.createBuffers(gl);
+                
+                atlas[img.atlasindex].mesh=mesh;
+
+                redraw();
+            }
+
+            var orb=0;
+            var bob=0;
+            var mx,my;
+            function mdown(event){
+                mx=event.offsetX;
+                my=event.offsetY;
+            }
+            function mup(event){
+                mx=undefined;
+                my=undefined;
+            }
+            function mout(event){
+                mx=undefined;
+                my=undefined;
+            }
+            function mmove(event){
+                if(!mx)return;
+                orb+=mx;
+                bob+=my;
+                mx=event.offsetX;
+                my=event.offsetY;
+                orb-=mx;
+                bob-=my;
+                if(bob<-90)bob=-90;
+                if(bob>90)bob=90;
+                redraw();
+            }
+            
+            var points=[];
+            var drawreq=false;
+            function redraw(){
+                if(drawreq)return;
+                drawreq=true;
+                requestAnimationFrame(draw);
+            }
+            function draw(){
+                drawreq=false;
+                
+                var nope=true;
+                var minx=Number.MAX_VALUE;
+                var miny=Number.MAX_VALUE;
+                var minz=Number.MAX_VALUE;
+                var maxx=-Number.MAX_VALUE;
+                var maxy=-Number.MAX_VALUE;
+                var maxz=-Number.MAX_VALUE;
+                atlas.forEach(function(elem){
+//                    if(elem.mesh && elem.enabled){
+                    if(elem.mesh){
+                        nope=false;
+                        if(minx>elem.mesh.minx)minx=elem.mesh.minx;
+                        if(miny>elem.mesh.miny)miny=elem.mesh.miny;
+                        if(minz>elem.mesh.minz)minz=elem.mesh.minz;
+                        if(maxx<elem.mesh.maxx)maxx=elem.mesh.maxx;
+                        if(maxy<elem.mesh.maxy)maxy=elem.mesh.maxy;
+                        if(maxz<elem.mesh.maxz)maxz=elem.mesh.maxz;
+                    }
+                });
+                
+                gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+                if(nope)return;
+                
+                gl.enable(gl.DEPTH_TEST);
+                gl.disable(gl.BLEND);
+                gl.depthMask(true);
+                
+                var center=ident();
+                center[0][3]=-(maxx-minx)/2;
+                center[1][3]=-(maxy-miny)/2;
+                center[2][3]=-(maxz-minz)/2;
+
+                var scale=ident();
+                scale[0][0]=scale[1][1]=scale[2][2]=parseFloat(document.getElementById("scale").value)/Math.sqrt(Math.pow(maxx-minx,2)+Math.pow(maxy-miny,2)+Math.pow(maxz-minz,2));
+
+                var rot=ident();
+                var sorb=Math.sin(orb*Math.PI/180);
+                var corb=Math.cos(orb*Math.PI/180);
+                rot[0][0]=rot[1][1]=corb;
+                rot[0][1]=sorb;rot[1][0]=-sorb;
+                
+                var bb=ident();
+                var sbob=Math.sin(bob*Math.PI/180);
+                var cbob=Math.cos(bob*Math.PI/180);
+                bb[0][0]=bb[2][2]=cbob;
+                bb[0][2]=sbob;bb[2][0]=-sbob;
+                
+                var snap=zero();
+                snap[0][1]=-1;
+                snap[1][2]=snap[2][0]=snap[3][3]=1;
+                
+                var aspect=ident();
+                aspect[2][2]=0.1;
+                if(gl.drawingBufferWidth>gl.drawingBufferHeight){
+                    aspect[0][0]=gl.drawingBufferHeight/gl.drawingBufferWidth;
+                }else{
+                    aspect[1][1]=gl.drawingBufferWidth/gl.drawingBufferHeight;
+                }
+                
+                var trf=mult(mult(mult(mult(mult(aspect,snap),bb),rot),scale),center);
+                var flatrf=trf[0].concat(trf[1]).concat(trf[2]).concat(trf[3]);
+                var nrm=mult(mult(snap,bb),rot);
+                var flatnrm=nrm[0].concat(nrm[1]).concat(nrm[2]).concat(nrm[3]);
+
+                if(!document.getElementById("cut").checked){
+                    solidMesh(flatrf,flatnrm);
+                    solidCloud(flatrf);
+                    ghostMesh(flatrf,flatnrm);
+                }else{
+                    cutMesh(flatrf,flatnrm,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
+//                    ghostMesh(flatrf,flatnrm);
+                    cutSurface(flatrf,nrm,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
+                    cutCloud(flatrf,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
+                }
+            }
+            
+            function solidCloud(flatrf){
+                if(points.length){
+                    
+                    var prg=progs.solidcloud;
+                    gl.useProgram(prg);
+
+                    var coords = gl.getAttribLocation(prg, "coords");
+                    gl.enableVertexAttribArray(coords);
+
+                    gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+                    
+                    var color=gl.getUniformLocation(prg,"color");
+                    points.forEach(function(elem){
+                        if(elem.enabled){
+                            gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                            elem.drawArray(gl,coords);
+                        }
+                    });
+                }
+            }
+            
+            function cutCloud(flatrf,cx,cy,cz,sx,sy,sz){
+                if(points.length){
+                    
+                    var prg=progs.cutcloud;
+                    gl.useProgram(prg);
+
+                    var coords = gl.getAttribLocation(prg, "coords");
+                    gl.enableVertexAttribArray(coords);
+
+                    gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+                    
+                    var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
+                    var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
+                    var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
+                    var srot=Math.sin(rot);
+                    var crot=Math.cos(rot);
+                    rot=ident();
+                    rot[0][0]=rot[1][1]=crot;
+                    rot[0][1]=srot;rot[1][0]=-srot;
+                    cutnormal=mult([cutnormal],rot)[0];
+
+                    var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+                    gl.uniform3f(gl.getUniformLocation(prg,"cutbase"),cx+cutnormal[0]*pos,cy+cutnormal[1]*pos,cz+cutnormal[2]*pos);
+                    gl.uniform3fv(gl.getUniformLocation(prg,"cutnormal"),cutnormal.slice(0,3));
+                
+                    var color=gl.getUniformLocation(prg,"color");
+                    points.forEach(function(elem){
+                        if(elem.enabled){
+                            gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                            elem.drawArray(gl,coords);
+                        }
+                    });
+                }
+            }
+            
+            function solidMesh(flatrf,flatnrm){
+                var prg=progs.solidmesh;
+                gl.useProgram(prg);
+        
+                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"normtrf"),false,flatnrm);
+ 
+                var coords = gl.getAttribLocation(prg, "coords");
+                gl.enableVertexAttribArray(coords);
+                var normals = gl.getAttribLocation(prg, "normals");
+                gl.enableVertexAttribArray(normals);
+                
+                var color=gl.getUniformLocation(prg,"color");
+                
+                gl.depthMask(true);
+                
+                gl.enable(gl.CULL_FACE);
+                gl.cullFace(gl.BACK);
+                atlas.forEach(function(elem){
+                    if(elem.mesh && elem.enabled && !elem.transparent){
+                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                        elem.mesh.drawElements(gl,coords,normals);
+                    }
+                });
+            }
+            function cutMesh(flatrf,flatnrm,cx,cy,cz,sx,sy,sz){
+                var prg=progs.cutmesh;
+                gl.useProgram(prg);
+        
+                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"normtrf"),false,flatnrm);
+                
+                var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
+                var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
+                var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
+                var srot=Math.sin(rot);
+                var crot=Math.cos(rot);
+                rot=ident();
+                rot[0][0]=rot[1][1]=crot;
+                rot[0][1]=srot;rot[1][0]=-srot;
+                cutnormal=mult([cutnormal],rot)[0];
+                
+                var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+                gl.uniform3f(gl.getUniformLocation(prg,"cutbase"),cx+cutnormal[0]*pos,cy+cutnormal[1]*pos,cz+cutnormal[2]*pos);
+                gl.uniform3fv(gl.getUniformLocation(prg,"cutnormal"),cutnormal.slice(0,3));
+ 
+                var coords = gl.getAttribLocation(prg, "coords");
+                gl.enableVertexAttribArray(coords);
+                var normals = gl.getAttribLocation(prg, "normals");
+                gl.enableVertexAttribArray(normals);
+                
+                var color=gl.getUniformLocation(prg,"color");
+                
+                gl.depthMask(true);
+                
+                gl.enable(gl.CULL_FACE);
+                gl.cullFace(gl.BACK);
+                atlas.forEach(function(elem){
+                    if(elem.mesh && elem.enabled && !elem.transparent){
+                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                        elem.mesh.drawElements(gl,coords,normals);
+                    }
+                });
+            }
+            function cutSurface(flatrf,nrm,cx,cy,cz,sx,sy,sz){
+                var prg=progs.cutsurface;
+                gl.useProgram(prg);
+        
+                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+                
+                var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
+                var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
+                var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
+                var srot=Math.sin(rot);
+                var crot=Math.cos(rot);
+                rot=ident();
+                rot[0][0]=rot[1][1]=crot;
+                rot[0][1]=srot;rot[1][0]=-srot;
+                cutnormal=mult([cutnormal],rot)[0];
+
+                var tmp=mult([cutnormal],inv4x4(nrm))[0];
+                if(tmp[2]>0)return;
+                
+                var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+                gl.uniform3f(gl.getUniformLocation(prg,"cutbase"),cx+cutnormal[0]*pos,cy+cutnormal[1]*pos,cz+cutnormal[2]*pos);
+                gl.uniform3fv(gl.getUniformLocation(prg,"cutnormal"),cutnormal.slice(0,3));
+ 
+                var coords = gl.getAttribLocation(prg, "coords");
+                gl.enableVertexAttribArray(coords);
+//                var normals = gl.getAttribLocation(prg, "normals");
+//                gl.enableVertexAttribArray(normals);
+                
+                var color=gl.getUniformLocation(prg,"color");
+                
+                gl.clear(gl.DEPTH_BUFFER_BIT);
+                gl.disable(gl.CULL_FACE);
+                gl.enable(gl.STENCIL_TEST);
+                gl.stencilMask(1);
+                
+                atlas.forEach(function(elem){
+                    if(elem.mesh && elem.enabled && !elem.transparent){
+                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                        
+                        gl.clear(gl.STENCIL_BUFFER_BIT);
+                        gl.colorMask(false,false,false,false);
+                        gl.disable(gl.DEPTH_TEST);
+                        gl.stencilFunc(gl.ALWAYS,1,1);
+                        gl.stencilOp(gl.INVERT,gl.INVERT,gl.INVERT);
+                        elem.mesh.drawElements(gl,coords);
+                        
+                        gl.colorMask(true,true,true,true);
+                        gl.enable(gl.DEPTH_TEST);
+                        gl.stencilFunc(gl.EQUAL,1,1);
+                        gl.stencilOp(gl.KEEP,gl.KEEP,gl.KEEP);
+                        elem.mesh.drawElements(gl,coords);
+                    }
+                });
+                gl.enable(gl.CULL_FACE);
+                gl.disable(gl.STENCIL_TEST);
+                
+            }
+            function ghostMesh(flatrf,flatnrm){
+                var prg=progs.ghostmesh;
+                gl.useProgram(prg);
+        
+                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"normtrf"),false,flatnrm);
+ 
+                var coords = gl.getAttribLocation(prg, "coords");
+                gl.enableVertexAttribArray(coords);
+                var normals = gl.getAttribLocation(prg, "normals");
+                gl.enableVertexAttribArray(normals);
+                
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+                gl.depthMask(false);
+
+                var color=gl.getUniformLocation(prg,"color");
+                
+                gl.enable(gl.CULL_FACE);
+                gl.cullFace(gl.FRONT);
+                atlas.forEach(function(elem){
+                    if(elem.mesh && elem.enabled && elem.transparent){
+                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                        elem.mesh.drawElements(gl,coords,normals);
+                    }
+                });
+                gl.cullFace(gl.BACK);
+                atlas.forEach(function(elem){
+                    if(elem.mesh && elem.enabled && elem.transparent){
+                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                        elem.mesh.drawElements(gl,coords,normals);
+                    }
+                });
+                
+                gl.depthMask(true);
+                gl.disable(gl.BLEND);
+            }
+            
+            function loadfile(event)
+            {
+                var fr=new FileReader();
+                fr.onload=function(){
+                    var data=JSON.parse(fr.result);
+                    points=[];
+                    var table=null;
+                    data.forEach(function(elem,idx){
+                        if(table===null)table="<table><tr><td><button onclick='showall()'>Show all</button></td><td><button onclick='hideall()'>Hide all</button></td></tr>";
+                        table+="<tr><td><input type='checkbox' checked='true' id='c"+idx+"' onchange='toggle("+idx+")'></td><td>"+elem.name+"</td></tr>";
+                        var pts=new Points(elem);
+                        pts.createBuffer(gl);
+                        points.push(pts);
+                    });
+                    if(table!==null){
+                        table+="</table>";
+                        document.getElementById("ptslist").innerHTML=table;
+                    }
+                    redraw();
+                };
+                fr.readAsText(event.target.files[0]);
+            }
+            function showall(){
+                for(var i=0;i<points.length;i++){
+                    points[i].enabled=true;
+                    document.getElementById("c"+i).checked=true;
+                }
+                redraw();
+            }
+            function hideall(){
+                for(var i=0;i<points.length;i++){
+                    points[i].enabled=false;
+                    document.getElementById("c"+i).checked=false;
+                }
+                redraw();
+            }
+            function toggle(idx){
+                points[idx].enabled=document.getElementById("c"+idx).checked;
+                redraw();
+            }
+            
+            function meshtable(){
+                var table="<table><tr>"+
+                        "<td colspan='3'><button onclick='meshshowall()'>Show</button><br>"+
+                        "<button onclick='meshtranall()'>Transparent</button><br>"+
+                        "<button onclick='meshhideall()'>Hide</button></td>"+
+                        "</tr>";
+                atlas.forEach(function(elem,idx){
+                    table+="<tr>"+
+                            "<td><input type='checkbox' checked id='m"+idx+"' onchange='mtoggle("+idx+")'></td>"+
+                            "<td><input type='checkbox' id='t"+idx+"' onchange='ttoggle("+idx+")'></td>"+
+                            "<td>"+elem.name+"</td>"+
+                            "</tr>";
+                    elem.enabled=true;
+                    elem.transparent=false;
+                });
+                table+="</table>";
+                document.getElementById("meshlist").innerHTML=table;
+            }
+            function meshshowall(){
+                for(var i=0;i<atlas.length;i++){
+                    atlas[i].enabled=true;
+                    atlas[i].transparent=false;
+                    document.getElementById("m"+i).checked=true;
+                    document.getElementById("t"+i).checked=false;
+                }
+                redraw();
+            }
+            function meshtranall(){
+                for(var i=0;i<atlas.length;i++){
+                    atlas[i].enabled=true;
+                    atlas[i].transparent=true;
+                    document.getElementById("m"+i).checked=true;
+                    document.getElementById("t"+i).checked=true;
+                }
+                redraw();
+            }
+            function meshhideall(){
+                for(var i=0;i<atlas.length;i++){
+                    atlas[i].enabled=false;
+                    atlas[i].transparent=false;
+                    document.getElementById("m"+i).checked=false;
+                    document.getElementById("t"+i).checked=false;
+                }
+                redraw();
+            }
+            function mtoggle(idx){
+                atlas[idx].enabled=document.getElementById("m"+idx).checked;
+                redraw();
+            }
+            function ttoggle(idx){
+                atlas[idx].transparent=document.getElementById("t"+idx).checked;
+                redraw();
+            }
+        </script>
+    </head>
+    <body onload="startup()">
+        <div id="toprow">
+            Scale: <input type="range" id="scale" min="1" max="10" value="4" oninput="redraw()">
+            Cloud: (<a href="example.json">example</a>)<input type="file" accept="text/json" onchange="loadfile(event)">
+            Cut controls: <input type="checkbox" id="cut" onchange="redraw()">
+            <input type="range" id="cutp" min="-100" max="100" oninput="redraw()">
+            <input type="range" id="cuth" min="-180" max="180" oninput="redraw()">
+            <input type="range" id="cutv" min="-90" max="90" oninput="redraw()">
+            <div id="counter" style="display:block;float:right"></div>
+        </div>
+        <canvas id="cnv" onmousedown="mdown(event)" onmousemove="mmove(event)" onmouseup="mup(event)" onmouseout="mout(event)"></canvas>
+        <div id="ptslist"></div>
+        <div id="meshlist">
+        </div>
+    </body>
+</html>
