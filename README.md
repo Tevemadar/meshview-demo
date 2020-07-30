@@ -3,6 +3,8 @@ Mesh viewer with solid slicing and point cloud support.
 
 This is a [working example](https://tevemadar.github.io/meshview-demo/), under construction. Feel free to drag things around.
 
+A converter for STL meshes is provided at https://github.com/Tevemadar/MeshView-PackSTL
+
 Example mesh data comes from Waxholm Space Atlas of the Sprague Dawley Rat Brain ([NITRC](https://www.nitrc.org/projects/whs-sd-atlas)).
 
  * Papp EA, Leergaard TB, Calabrese E, Johnson GA, Bjaalie JG (2014) Waxholm Space atlas of the Sprague Dawley rat brain. NeuroImage 97, 374-386

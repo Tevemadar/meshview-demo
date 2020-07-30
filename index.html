@@ -9,7 +9,7 @@
                 margin: 0;
                 padding: 0;
             }
-            canvas{
+            #cnv{
                 position: absolute;
                 display: block;
             }
@@ -21,10 +21,11 @@
             #ptslist{
                 position: absolute;
                 width: 150px;
+                /*display: none;*/
                 display: block;
                 background: #F0F0FF;
                 overflow-y: scroll;
-                resize: horizontal;
+                /*resize: horizontal;*/
             }
             #meshlist{
                 position: absolute;
@@ -32,7 +33,46 @@
                 display: block;
                 background: #F0F0FF;
                 overflow: scroll;
-                /*resize: horizontal;*/
+                resize: horizontal;
+            }
+            
+            #cut_box{
+                width: 370px;
+                /*height: 200px;*/
+                background: lightgray;
+                position: absolute;
+                user-select: none;
+                text-align: center;
+                display: none;
+            }
+            #cut_box>input[type=number]{
+                width: 50px;
+            }
+            #cut_handle{
+                cursor: move;
+                margin-top: 5px;
+                margin-bottom: -5px;
+            }
+            #cut_range{
+                width: 90%;
+            }
+            
+            #simple_cloud{
+                position:absolute;
+                user-select: none;
+                width:300px;
+                background:lightgray;
+                text-align: center;
+                display: none;
+            }
+            #cloud_handle{
+                cursor: move;
+                margin-top: 5px;
+                margin-bottom: -5px;
+            }
+            #cloud_text{
+                width:280px;
+                height: 500px;
             }
         </style>
         <script src="mesh.js"></script>
@@ -40,10 +80,26 @@
         <script src="shaders.js"></script>
         <script src="matrix.js"></script>
         <script>
+            var atlasroot="WHS_SD_rat_atlas_v2";
             function startup(){
+                drag(cut_box,cut_handle);
+                drag(simple_cloud,cloud_handle);
+                drawCut();
+                location.search.slice(1).split("&").forEach(function(pair){
+                    if(pair.length===0)return;
+                    var parts=pair.split("=");
+                    if(parts[0]==="atlas")atlasroot=parts[1];
+                    else{
+                        var control=document.getElementById(parts[0]);
+                        switch(control.type){
+                            case "range": control.value=parts[1];break;
+                            case "checkbox": control.checked=parts[1]==="true";break;
+                        }
+                    }
+                });
                 init();
                 var xhr=new XMLHttpRequest();
-                xhr.open("GET","WHS_SD_rat_atlas_v2.json");
+                xhr.open("GET",atlasroot+".json");
                 xhr.onload=jsonready;
                 xhr.send();
             }
@@ -55,7 +111,7 @@
                 atlas.forEach(function(elem,idx){
                     var img=document.createElement("img");
                     img.onload=imgLoad;
-                    img.src="WHS_SD_rat_atlas_v2/"+elem.idx+".png";
+                    img.src=atlasroot+"/"+elem.idx+".png";
                     img.atlasindex=idx;
                 });
                 
@@ -75,12 +131,13 @@
                 
                 var lst=document.getElementById("ptslist");
                 lst.style.height=(window.innerHeight-lst.offsetTop-1)+"px";
+                lst.style.left=(window.innerWidth-lst.offsetWidth-1)+"px";
                 
                 lst=document.getElementById("meshlist");
                 lst.style.height=(window.innerHeight-lst.offsetTop-1)+"px";
-                lst.style.left=(window.innerWidth-lst.offsetWidth-1)+"px";
         
-                gl=cnv.getContext("webgl",{stencil:true});
+                gl=cnv.getContext("webgl",{stencil:true,alpha:false/*,premultipliedAlpha:false*/});
+                gl.clearColor(1,1,1,1);
 
                 progs=buildshaders(gl);
             }
@@ -156,8 +213,8 @@
                 var maxy=-Number.MAX_VALUE;
                 var maxz=-Number.MAX_VALUE;
                 atlas.forEach(function(elem){
-//                    if(elem.mesh && elem.enabled){
-                    if(elem.mesh){
+                    if(elem.mesh && elem.visibility>0){
+//                    if(elem.mesh){
                         nope=false;
                         if(minx>elem.mesh.minx)minx=elem.mesh.minx;
                         if(miny>elem.mesh.miny)miny=elem.mesh.miny;
@@ -169,17 +226,36 @@
                 });
                 
                 gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-                if(nope)return;
                 
+                var center=ident();
+                
+                if(!nope){
+                    center[0][3]=-(maxx+minx)/2;
+                    center[1][3]=-(maxy+miny)/2;
+                    center[2][3]=-(maxz+minz)/2;
+                }
+                
+                atlas.forEach(function(elem){
+                    if(elem.mesh){
+                        if(minx>elem.mesh.minx)minx=elem.mesh.minx;
+                        if(miny>elem.mesh.miny)miny=elem.mesh.miny;
+                        if(minz>elem.mesh.minz)minz=elem.mesh.minz;
+                        if(maxx<elem.mesh.maxx)maxx=elem.mesh.maxx;
+                        if(maxy<elem.mesh.maxy)maxy=elem.mesh.maxy;
+                        if(maxz<elem.mesh.maxz)maxz=elem.mesh.maxz;
+                    }
+                });
+
+                if(nope){
+                    center[0][3]=-(maxx+minx)/2;
+                    center[1][3]=-(maxy+miny)/2;
+                    center[2][3]=-(maxz+minz)/2;
+                }
+
                 gl.enable(gl.DEPTH_TEST);
                 gl.disable(gl.BLEND);
                 gl.depthMask(true);
                 
-                var center=ident();
-                center[0][3]=-(maxx-minx)/2;
-                center[1][3]=-(maxy-miny)/2;
-                center[2][3]=-(maxz-minz)/2;
-
                 var scale=ident();
                 scale[0][0]=scale[1][1]=scale[2][2]=parseFloat(document.getElementById("scale").value)/Math.sqrt(Math.pow(maxx-minx,2)+Math.pow(maxy-miny,2)+Math.pow(maxz-minz,2));
 
@@ -215,12 +291,18 @@
                 if(!document.getElementById("cut").checked){
                     solidMesh(flatrf,flatnrm);
                     solidCloud(flatrf);
-                    ghostMesh(flatrf,flatnrm);
+                    transparentMesh(flatrf);
                 }else{
-                    cutMesh(flatrf,flatnrm,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
-//                    ghostMesh(flatrf,flatnrm);
-                    cutSurface(flatrf,nrm,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
-                    cutCloud(flatrf,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
+                    if(!document.getElementById("cut_cloud").checked){
+                        cutMesh(flatrf,flatnrm,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
+//                        ghostMesh(flatrf,flatnrm);
+                        cutSurface(flatrf,nrm,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
+                        cutCloud(flatrf,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
+                    } else {
+                        solidMesh(flatrf,flatnrm);
+                        cutCloud(flatrf,(maxx+minx)/2,(maxy+miny)/2,(maxz+minz)/2,maxx-minx,maxy-miny,maxz-minz);
+                        transparentMesh(flatrf);
+                    }
                 }
             }
             
@@ -234,14 +316,26 @@
                     gl.enableVertexAttribArray(coords);
 
                     gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+                    gl.uniform1f(gl.getUniformLocation(prg,"pointsize"),parseFloat(document.getElementById("psize").value));
                     
                     var color=gl.getUniformLocation(prg,"color");
                     points.forEach(function(elem){
-                        if(elem.enabled){
-                            gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                        if(elem.enabled && elem.a===100 && elem.count>0){
+                            gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,1);
                             elem.drawArray(gl,coords);
                         }
                     });
+                    gl.depthMask(false);
+                    gl.enable(gl.BLEND);
+                    gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+                    points.forEach(function(elem){
+                        if(elem.enabled && elem.a!==100 && elem.count>0){
+                            gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,elem.a/100);
+                            elem.drawArray(gl,coords);
+                        }
+                    });
+                    gl.depthMask(true);
+                    gl.disable(gl.BLEND);
                 }
             }
             
@@ -255,28 +349,45 @@
                     gl.enableVertexAttribArray(coords);
 
                     gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+                    gl.uniform1f(gl.getUniformLocation(prg,"pointsize"),parseFloat(document.getElementById("psize").value));
                     
-                    var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
-                    var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
-                    var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
-                    var srot=Math.sin(rot);
-                    var crot=Math.cos(rot);
-                    rot=ident();
-                    rot[0][0]=rot[1][1]=crot;
-                    rot[0][1]=srot;rot[1][0]=-srot;
-                    cutnormal=mult([cutnormal],rot)[0];
-
-                    var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+//                    var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
+//                    var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
+//                    var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
+//                    var srot=Math.sin(rot);
+//                    var crot=Math.cos(rot);
+//                    rot=ident();
+//                    rot[0][0]=rot[1][1]=crot;
+//                    rot[0][1]=srot;rot[1][0]=-srot;
+//                    cutnormal=mult([cutnormal],rot)[0];
+//                    
+//                    var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+                    var cnp=collectCut(sx,sy,sz);
+                    var cutnormal=cnp.cutnormal;
+                    var pos=cnp.pos;
+                    
                     gl.uniform3f(gl.getUniformLocation(prg,"cutbase"),cx+cutnormal[0]*pos,cy+cutnormal[1]*pos,cz+cutnormal[2]*pos);
                     gl.uniform3fv(gl.getUniformLocation(prg,"cutnormal"),cutnormal.slice(0,3));
                 
                     var color=gl.getUniformLocation(prg,"color");
                     points.forEach(function(elem){
-                        if(elem.enabled){
-                            gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                        if(elem.enabled && elem.a===100 && elem.count>0){
+                            gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,1);
                             elem.drawArray(gl,coords);
                         }
                     });
+                    
+                    gl.depthMask(false);
+                    gl.enable(gl.BLEND);
+                    gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+                    points.forEach(function(elem){
+                        if(elem.enabled && elem.a!==100 && elem.count>0){
+                            gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,elem.a/100);
+                            elem.drawArray(gl,coords);
+                        }
+                    });
+                    gl.depthMask(true);
+                    gl.disable(gl.BLEND);
                 }
             }
             
@@ -299,8 +410,8 @@
                 gl.enable(gl.CULL_FACE);
                 gl.cullFace(gl.BACK);
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.enabled && !elem.transparent){
-                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                    if(elem.mesh && elem.visibility===1){
+                        gl.uniform3f(color,elem.r/255,elem.g/255,elem.b/255);
                         elem.mesh.drawElements(gl,coords,normals);
                     }
                 });
@@ -312,17 +423,22 @@
                 gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
                 gl.uniformMatrix4fv(gl.getUniformLocation(prg,"normtrf"),false,flatnrm);
                 
-                var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
-                var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
-                var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
-                var srot=Math.sin(rot);
-                var crot=Math.cos(rot);
-                rot=ident();
-                rot[0][0]=rot[1][1]=crot;
-                rot[0][1]=srot;rot[1][0]=-srot;
-                cutnormal=mult([cutnormal],rot)[0];
-                
-                var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+//                var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
+//                var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
+//                var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
+//                var srot=Math.sin(rot);
+//                var crot=Math.cos(rot);
+//                rot=ident();
+//                rot[0][0]=rot[1][1]=crot;
+//                rot[0][1]=srot;rot[1][0]=-srot;
+//                cutnormal=mult([cutnormal],rot)[0];
+//                
+//                var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+
+                var cnp=collectCut(sx,sy,sz);
+                var cutnormal=cnp.cutnormal;
+                var pos=cnp.pos;
+
                 gl.uniform3f(gl.getUniformLocation(prg,"cutbase"),cx+cutnormal[0]*pos,cy+cutnormal[1]*pos,cz+cutnormal[2]*pos);
                 gl.uniform3fv(gl.getUniformLocation(prg,"cutnormal"),cutnormal.slice(0,3));
  
@@ -338,8 +454,8 @@
                 gl.enable(gl.CULL_FACE);
                 gl.cullFace(gl.BACK);
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.enabled && !elem.transparent){
-                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                    if(elem.mesh && elem.visibility===1){
+                        gl.uniform3f(color,elem.r/255,elem.g/255,elem.b/255);
                         elem.mesh.drawElements(gl,coords,normals);
                     }
                 });
@@ -350,20 +466,24 @@
         
                 gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
                 
-                var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
-                var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
-                var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
-                var srot=Math.sin(rot);
-                var crot=Math.cos(rot);
-                rot=ident();
-                rot[0][0]=rot[1][1]=crot;
-                rot[0][1]=srot;rot[1][0]=-srot;
-                cutnormal=mult([cutnormal],rot)[0];
+//                var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
+//                var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
+//                var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
+//                var srot=Math.sin(rot);
+//                var crot=Math.cos(rot);
+//                rot=ident();
+//                rot[0][0]=rot[1][1]=crot;
+//                rot[0][1]=srot;rot[1][0]=-srot;
+//                cutnormal=mult([cutnormal],rot)[0];
+
+                var cnp=collectCut(sx,sy,sz);
+                var cutnormal=cnp.cutnormal;
+                var pos=cnp.pos;
 
                 var tmp=mult([cutnormal],inv4x4(nrm))[0];
                 if(tmp[2]>0)return;
                 
-                var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+//                var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
                 gl.uniform3f(gl.getUniformLocation(prg,"cutbase"),cx+cutnormal[0]*pos,cy+cutnormal[1]*pos,cz+cutnormal[2]*pos);
                 gl.uniform3fv(gl.getUniformLocation(prg,"cutnormal"),cutnormal.slice(0,3));
  
@@ -380,8 +500,8 @@
                 gl.stencilMask(1);
                 
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.enabled && !elem.transparent){
-                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
+                    if(elem.mesh && elem.visibility===1){
+                        gl.uniform3f(color,elem.r/255,elem.g/255,elem.b/255);
                         
                         gl.clear(gl.STENCIL_BUFFER_BIT);
                         gl.colorMask(false,false,false,false);
@@ -401,17 +521,52 @@
                 gl.disable(gl.STENCIL_TEST);
                 
             }
-            function ghostMesh(flatrf,flatnrm){
-                var prg=progs.ghostmesh;
+//            function ghostMesh(flatrf,flatnrm){
+//                var prg=progs.ghostmesh;
+//                gl.useProgram(prg);
+//        
+//                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
+//                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"normtrf"),false,flatnrm);
+// 
+//                var coords = gl.getAttribLocation(prg, "coords");
+//                gl.enableVertexAttribArray(coords);
+//                var normals = gl.getAttribLocation(prg, "normals");
+//                gl.enableVertexAttribArray(normals);
+//                
+//                gl.enable(gl.BLEND);
+//                gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+//                gl.depthMask(false);
+//
+//                var color=gl.getUniformLocation(prg,"color");
+//                
+//                gl.enable(gl.CULL_FACE);
+//                gl.cullFace(gl.FRONT);
+//                atlas.forEach(function(elem){
+//                    if(elem.mesh && elem.enabled && elem.transparent){
+//                        gl.uniform3f(color,elem.r/255,elem.g/255,elem.b/255);
+//                        elem.mesh.drawElements(gl,coords,normals);
+//                    }
+//                });
+//                gl.cullFace(gl.BACK);
+//                atlas.forEach(function(elem){
+//                    if(elem.mesh && elem.enabled && elem.transparent){
+//                        gl.uniform3f(color,elem.r/255,elem.g/255,elem.b/255);
+//                        elem.mesh.drawElements(gl,coords,normals);
+//                    }
+//                });
+//                
+//                gl.depthMask(true);
+//                gl.disable(gl.BLEND);
+//            }
+            
+            function transparentMesh(flatrf){
+                var prg=progs.transparentmesh;
                 gl.useProgram(prg);
         
                 gl.uniformMatrix4fv(gl.getUniformLocation(prg,"alltrf"),false,flatrf);
-                gl.uniformMatrix4fv(gl.getUniformLocation(prg,"normtrf"),false,flatnrm);
  
                 var coords = gl.getAttribLocation(prg, "coords");
                 gl.enableVertexAttribArray(coords);
-                var normals = gl.getAttribLocation(prg, "normals");
-                gl.enableVertexAttribArray(normals);
                 
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
@@ -419,19 +574,28 @@
 
                 var color=gl.getUniformLocation(prg,"color");
                 
+//                var f=0.05;
+                var a=0.5;
+                
                 gl.enable(gl.CULL_FACE);
                 gl.cullFace(gl.FRONT);
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.enabled && elem.transparent){
-                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
-                        elem.mesh.drawElements(gl,coords,normals);
+                    var f=elem.visibility;
+                    if(elem.mesh && f>0 && f<1){
+//                        gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,f);
+//                        gl.uniform4f(color,elem.r/255*f,elem.g/255*f,elem.b/255*f,f);
+                        gl.uniform4f(color,elem.r/255*(a+f),elem.g/255*(a+f),elem.b/255*(a+f),f);
+                        elem.mesh.drawElements(gl,coords);
                     }
                 });
                 gl.cullFace(gl.BACK);
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.enabled && elem.transparent){
-                        gl.uniform3f(color,elem.r/255.0,elem.g/255.0,elem.b/255.0);
-                        elem.mesh.drawElements(gl,coords,normals);
+                    var f=elem.visibility;
+                    if(elem.mesh && f>0 && f<1){
+//                        gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,f);
+//                        gl.uniform4f(color,elem.r/255*f,elem.g/255*f,elem.b/255*f,f);
+                        gl.uniform4f(color,elem.r/255*(a+f),elem.g/255*(a+f),elem.b/255*(a+f),f);
+                        elem.mesh.drawElements(gl,coords);
                     }
                 });
                 
@@ -439,24 +603,44 @@
                 gl.disable(gl.BLEND);
             }
             
+//            function loadfile(event)
+//            {
+//                var fr=new FileReader();
+//                fr.onload=function(){
+//                    var data=JSON.parse(fr.result);
+//                    points=[];
+//                    var table=null;
+//                    data.forEach(function(elem,idx){
+//                        if(table===null)table="<table><tr><td><button onclick='showall()'>Show all</button></td><td><button onclick='hideall()'>Hide all</button></td></tr>";
+//                        table+="<tr><td><input type='checkbox' checked='true' id='c"+idx+"' onchange='toggle("+idx+")'></td><td>"+elem.name+"</td></tr>";
+//                        var pts=new Points(elem);
+//                        pts.createBuffer(gl);
+//                        points.push(pts);
+//                    });
+//                    if(table!==null){
+//                        table+="</table>";
+//                        document.getElementById("ptslist").innerHTML=table;
+//                    }
+//                    redraw();
+//                };
+//                fr.readAsText(event.target.files[0]);
+//            }
             function loadfile(event)
             {
                 var fr=new FileReader();
                 fr.onload=function(){
                     var data=JSON.parse(fr.result);
-                    points=[];
-                    var table=null;
-                    data.forEach(function(elem,idx){
-                        if(table===null)table="<table><tr><td><button onclick='showall()'>Show all</button></td><td><button onclick='hideall()'>Hide all</button></td></tr>";
+                    var table=points.length>0?document.getElementById("ptstable").innerHTML:
+                            "<tr><td><button onclick='showall()'>Show all</button></td><td><button onclick='hideall()'>Hide all</button></td></tr>";
+                    table+="<tr><td colspan='2' style='background-color:lightgray'>"+event.target.files[0].name+"</td></tr>";
+                    data.forEach(function(elem){
+                        var idx=points.length;
                         table+="<tr><td><input type='checkbox' checked='true' id='c"+idx+"' onchange='toggle("+idx+")'></td><td>"+elem.name+"</td></tr>";
                         var pts=new Points(elem);
                         pts.createBuffer(gl);
                         points.push(pts);
                     });
-                    if(table!==null){
-                        table+="</table>";
-                        document.getElementById("ptslist").innerHTML=table;
-                    }
+                    document.getElementById("ptstable").innerHTML=table;
                     redraw();
                 };
                 fr.readAsText(event.target.files[0]);
@@ -481,73 +665,294 @@
             }
             
             function meshtable(){
+                function hex(x){
+                    return ("0"+x.toString(16)).slice(-2);
+                }
                 var table="<table><tr>"+
                         "<td colspan='3'><button onclick='meshshowall()'>Show</button><br>"+
                         "<button onclick='meshtranall()'>Transparent</button><br>"+
                         "<button onclick='meshhideall()'>Hide</button></td>"+
                         "</tr>";
                 atlas.forEach(function(elem,idx){
+//                    table+="<tr>"+
+//                            "<td><input type='checkbox' checked id='m"+idx+"' onchange='mtoggle("+idx+")'></td>"+
+//                            "<td><input type='checkbox' id='t"+idx+"' onchange='ttoggle("+idx+")'></td>"+
+//                            "<td>"+elem.name+"</td>"+
+//                            "</tr>";
                     table+="<tr>"+
-                            "<td><input type='checkbox' checked id='m"+idx+"' onchange='mtoggle("+idx+")'></td>"+
-                            "<td><input type='checkbox' id='t"+idx+"' onchange='ttoggle("+idx+")'></td>"+
+                            "<td><input type='color' id='c"+idx+"' value='#"+hex(elem.r)+hex(elem.g)+hex(elem.b)+"' oninput='cchange("+idx+")' style='width:20px'></td>"+
+                            "<td><input type='range' id='v"+idx+"' min='0' max='20' value='20' oninput='vchange("+idx+")' style='width:50px'></td>"+
                             "<td>"+elem.name+"</td>"+
                             "</tr>";
-                    elem.enabled=true;
-                    elem.transparent=false;
+//                    elem.enabled=true;
+//                    elem.transparent=false;
+                    elem.visibility=1;
                 });
                 table+="</table>";
                 document.getElementById("meshlist").innerHTML=table;
             }
             function meshshowall(){
                 for(var i=0;i<atlas.length;i++){
-                    atlas[i].enabled=true;
-                    atlas[i].transparent=false;
-                    document.getElementById("m"+i).checked=true;
-                    document.getElementById("t"+i).checked=false;
+                    atlas[i].visibility=1;
+                    document.getElementById("v"+i).value=20;
+//                    atlas[i].enabled=true;
+//                    atlas[i].transparent=false;
+//                    document.getElementById("m"+i).checked=true;
+//                    document.getElementById("t"+i).checked=false;
                 }
                 redraw();
             }
             function meshtranall(){
                 for(var i=0;i<atlas.length;i++){
-                    atlas[i].enabled=true;
-                    atlas[i].transparent=true;
-                    document.getElementById("m"+i).checked=true;
-                    document.getElementById("t"+i).checked=true;
+                    atlas[i].visibility=0.05;
+                    document.getElementById("v"+i).value=1;
+//                    atlas[i].enabled=true;
+//                    atlas[i].transparent=true;
+//                    document.getElementById("m"+i).checked=true;
+//                    document.getElementById("t"+i).checked=true;
                 }
                 redraw();
             }
             function meshhideall(){
                 for(var i=0;i<atlas.length;i++){
-                    atlas[i].enabled=false;
-                    atlas[i].transparent=false;
-                    document.getElementById("m"+i).checked=false;
-                    document.getElementById("t"+i).checked=false;
+                    atlas[i].visibility=0;
+                    document.getElementById("v"+i).value=0;
+//                    atlas[i].enabled=false;
+//                    atlas[i].transparent=false;
+//                    document.getElementById("m"+i).checked=false;
+//                    document.getElementById("t"+i).checked=false;
                 }
                 redraw();
             }
-            function mtoggle(idx){
-                atlas[idx].enabled=document.getElementById("m"+idx).checked;
+//            function mtoggle(idx){
+//                atlas[idx].enabled=document.getElementById("m"+idx).checked;
+//                redraw();
+//            }
+//            function ttoggle(idx){
+//                atlas[idx].transparent=document.getElementById("t"+idx).checked;
+//                redraw();
+//            }
+            function cchange(idx){
+                var c=document.getElementById("c"+idx).value.substring(1);
+                atlas[idx].r=parseInt(c.substring(0,2),16);
+                atlas[idx].g=parseInt(c.substring(2,4),16);
+                atlas[idx].b=parseInt(c.substring(4,6),16);
                 redraw();
             }
-            function ttoggle(idx){
-                atlas[idx].transparent=document.getElementById("t"+idx).checked;
+            function vchange(idx){
+                atlas[idx].visibility=document.getElementById("v"+idx).valueAsNumber/20;
                 redraw();
+            }
+            
+            var firstCut=true;
+            function toggleCut(event){
+                cut_box.style.display=event.target.checked?"block":"none";
+                if(firstCut)cut_box.style.left=document.getElementById("meshlist").offsetWidth+"px";
+                firstCut=false;
+                redraw();
+            }
+            function drag(target,handle){
+                handle.addEventListener("mousedown",mdown,true);
+                var pick;
+                function mdown(event){
+                    pick=[event.clientX,event.clientY];
+                    document.addEventListener("mouseup",mup,true);
+//                    document.addEventListener("mouseout",mup,true);
+                    document.addEventListener("mousemove",mmove,true);
+                }
+                function mup(event){
+                    document.removeEventListener("mouseup",mup,true);
+//                    document.removeEventListener("mouseout",mup,true);
+                    document.removeEventListener("mousemove",mmove,true);
+                }
+                function mmove(event){
+                    target.style.left=(target.offsetLeft+event.clientX-pick[0])+"px";
+                    target.style.top=(target.offsetTop+event.clientY-pick[1])+"px";
+                    pick=[event.clientX,event.clientY];
+                }
+            }
+            function drawCut(){
+                var ctx=cut_cnv.getContext("2d");
+                ctx.fillStyle="darkgray";
+                ctx.fillRect(0,0,361,181);
+                ctx.beginPath();
+                ctx.rect(0,0,361,181);
+                ctx.moveTo(180.5,0);
+                ctx.lineTo(180.5,181);
+                ctx.moveTo(0,90.5);
+                ctx.lineTo(361,90.5);
+                for(var i=0;i<361;i+=10){
+                    ctx.moveTo(i+0.5,85.5);
+                    ctx.lineTo(i+0.5,94.5);
+                    ctx.moveTo(175.5,i+0.5);
+                    ctx.lineTo(184.5,i+0.5);
+                }
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(cut_hrot.valueAsNumber+180.5,90.5-cut_vrot.valueAsNumber,5,0,Math.PI*2);
+                ctx.fillStyle="red";
+                ctx.fill();
+            }
+            var cut_down=false;
+            function cut_mdown(event){
+                cut_down=true;
+                cut_input(event);
+            }
+            function cut_mup(event){
+                cut_down=false;
+            }
+            function cut_input(event){
+                switch(event.target){
+                    case cut_level:
+                        cut_range.value=cut_level.value;
+                        break;
+                    case cut_range:
+                        cut_level.value=cut_range.value;
+                        break;
+                    case cut_cnv:
+                        if(!cut_down)break;
+                        cut_hrot.value=Math.max(Math.min(event.offsetX-180,180),-180);
+                        cut_vrot.value=-Math.max(Math.min(event.offsetY-90,90),-90);
+                    case cut_hrot:
+                    case cut_vrot:
+                        drawCut();
+                        break;
+                }
+                redraw();
+            }
+            function collectCut(sx,sy,sz){
+//                var bob=parseFloat(document.getElementById("cutv").value)*Math.PI/180;
+                var bob=document.getElementById("cut_vrot").valueAsNumber*Math.PI/180;
+                var cutnormal=[0,Math.cos(bob),Math.sin(bob),1];
+//                var rot=parseFloat(document.getElementById("cuth").value)*Math.PI/180;
+                var rot=document.getElementById("cut_hrot").value*Math.PI/180;
+                var srot=Math.sin(rot);
+                var crot=Math.cos(rot);
+                rot=ident();
+                rot[0][0]=rot[1][1]=crot;
+                rot[0][1]=srot;rot[1][0]=-srot;
+                cutnormal=mult([cutnormal],rot)[0];
+
+//                var pos=-parseFloat(document.getElementById("cutp").value)*Math.sqrt(sx*sx+sy*sy+sz*sz)/200;
+                var pos=-(document.getElementById("cut_level").valueAsNumber-50)*Math.sqrt(sx*sx+sy*sy+sz*sz)/100;
+                
+                return {cutnormal:cutnormal,pos:pos};
+            }
+            var firstCloud=true;
+            function simple_open(){
+                document.getElementById("simple_cloud").style.display="block";
+                if(firstCloud)simple_cloud.style.left=document.getElementById("meshlist").offsetWidth+"px";
+                firstCloud=false;
+            }
+            function simple_close(){
+                document.getElementById("cloud_text").value="";
+                document.getElementById("simple_cloud").style.display="none";
+            }
+//                    data.forEach(function(elem){
+//                        var idx=points.length;
+//                        table+="<tr><td><input type='checkbox' checked='true' id='c"+idx+"' onchange='toggle("+idx+")'></td><td>"+elem.name+"</td></tr>";
+//                        var pts=new Points(elem);
+//                        pts.createBuffer(gl);
+//                        points.push(pts);
+//                    });
+//                };
+//                fr.readAsText(event.target.files[0]);
+//            }
+            function simple_add(){
+                try{
+                    var table=points.length>0?document.getElementById("ptstable").innerHTML:
+                            "<tr><td><button onclick='showall()'>Show all</button></td><td><button onclick='hideall()'>Hide all</button></td></tr>";
+                    table+="<tr><td colspan='2' style='background-color:lightgray'>"+cloud_head.value+"</td></tr>";
+                    var lines=document.getElementById("cloud_text").value.split(/\r?\n/);
+                    var name,r=0,g=0,b=0;
+                    var batch=[];
+                    function add(){
+                        if(batch.length){
+                            var idx=points.length;
+                            if(!name)name="Cloud #"+(idx+1);
+                            var pts=new Points({idx:idx,r:r,g:g,b:b,name:name,count:batch.length/3,triplets:batch});
+                            pts.createBuffer(gl);
+                            points.push(pts);
+                            table+="<tr><td><input type='checkbox' checked='true' id='c"+idx+"' onchange='toggle("+idx+")'></td><td>"+name+"</td></tr>";
+                            name=undefined;
+                            batch=[];
+                        }
+                    }
+                    lines.forEach(function(line){
+                        line=line.trim();
+                        var coords=line.match(/^([\d\.]+)[\s,]+([\d\.]+)[\s,]+([\d\.]+)/);
+                        if(coords)coords.slice(1).forEach(function(x,i){
+                            x=parseFloat(x);
+                            if(i===0){
+                                if(WHS_flip.checked)x=511-x;
+                                else if(ABA_flip.checked)x=455-x;
+                            }
+                            batch.push(parseFloat(x));
+                        });
+                        else{
+                            add();
+                            var colors=line.match(/^RGB\s*([\d\.]+)[\s,]+([\d\.]+)[\s,]+([\d\.]+)/);
+                            if(colors){
+                                r=Math.max(0,Math.min(255,parseFloat(colors[1])*255));
+                                g=Math.max(0,Math.min(255,parseFloat(colors[2])*255));
+                                b=Math.max(0,Math.min(255,parseFloat(colors[3])*255));
+                            }else
+                                if(line[0]==="#")name=line.substring(1).trim();
+                        }
+                    });
+                    add();
+
+                    document.getElementById("ptstable").innerHTML=table;
+                    redraw();
+                    simple_close();
+                }catch(e){
+                    alert("Sum Ting Wong says: "+e);
+                }
             }
         </script>
     </head>
     <body onload="startup()">
         <div id="toprow">
-            Scale: <input type="range" id="scale" min="1" max="10" value="4" oninput="redraw()">
-            Cloud: (<a href="example.json">example</a>)<input type="file" accept="text/json" onchange="loadfile(event)">
-            Cut controls: <input type="checkbox" id="cut" onchange="redraw()">
-            <input type="range" id="cutp" min="-100" max="100" oninput="redraw()">
+            <label for="scale">Scale:</label><input type="range" id="scale" min="1" max="10" value="4" oninput="redraw()">
+            <input type="checkbox" id="cut" onchange="toggleCut(event)"><label for="cut">Cut</label>
+<!--            <input type="range" id="cutp" min="-100" max="100" oninput="redraw()">
             <input type="range" id="cuth" min="-180" max="180" oninput="redraw()">
-            <input type="range" id="cutv" min="-90" max="90" oninput="redraw()">
+            <input type="range" id="cutv" min="-90" max="90" oninput="redraw()">-->
+            | Cloud: (<a href="example.json"  >example</a>)
+            <input type="file" accept="text/json" onchange="loadfile(event)">
+            <button onclick="simple_open()">Cloud from coordinates</button>
+            <input type="range" id="psize" min="1" max="10" value="2" oninput="redraw()"><label for="psize">Point size</label>
             <div id="counter" style="display:block;float:right"></div>
         </div>
         <canvas id="cnv" onmousedown="mdown(event)" onmousemove="mmove(event)" onmouseup="mup(event)" onmouseout="mout(event)"></canvas>
-        <div id="ptslist"></div>
-        <div id="meshlist">
+        <div id="ptslist"><table id="ptstable"></table></div>
+        <div id="meshlist"></div>
+        <div id="cut_box">
+            <div id="cut_handle">Cut controls</div>
+            <hr>
+            <!--<input type="checkbox" id="cut_enable"><label for="cut_enable">Enable</label>-->
+            <!--<input type="checkbox" id="cut_face"><label for="cut_face">Face</label>-->
+            <label for="cut_hrot">H</label><input type="number" id="cut_hrot" step="0.05" value="0" oninput="cut_input(event)">
+            <label for="cut_hrot">V</label><input type="number" id="cut_vrot" step="0.05" value="0" oninput="cut_input(event)">
+            <label for="cut_level">L</label><input type="number" id="cut_level" step="0.05" min="0" max="100" value="50" oninput="cut_input(event)">
+            <label for="cut_cloud">Cloud only</label><input type="checkbox" id="cut_cloud" oninput="cut_input(event)"><br>
+            <!--<canvas id="cut_cnv" width="361" height="181" onmousedown="cut_mdown(event)" onmouseup="cut_mup(event)" onmouseout="cut_mup(event)" onmousemove="cut_input(event)"></canvas><br>-->
+            <canvas id="cut_cnv" width="361" height="181" onmousedown="cut_mdown(event)" onmouseup="cut_mup(event)" onmousemove="cut_input(event)"></canvas><br>
+            <input type="range" id="cut_range" step="0.05" min="0" max="100" oninput="cut_input(event)">
+            <div style="text-align: left;font-size: small">Performance of mesh cut really benefits from a discrete graphics card</div>
+        </div>
+        <div id="simple_cloud">
+            <div id="cloud_handle">Coordinate listing</div>
+            <hr>
+            Block header:<input type="text" id="cloud_head" value="-------">
+            <textarea id="cloud_text" placeholder="One x,y,z triplet per row, separated by commas or spaces."></textarea>
+            Mirror x-axis
+            <input type="checkbox" onclick="WHS_flip.checked=ABA_flip.checked=false;flips.style.visibility=event.target.checked?'visible':'hidden'">
+            <span id="flips" style="visibility:hidden">
+                <input type="checkbox" id="ABA_flip" onclick="WHS_flip.checked=false"><label for="ABA_flip">ABA</label>
+                <input type="checkbox" id="WHS_flip" onclick="ABA_flip.checked=false"><label for="WHS_flip">WHS</label><br>
+            </span>
+            <button onclick="simple_add()">Add</button><button onclick="simple_close()">Cancel</button>
         </div>
     </body>
 </html>
