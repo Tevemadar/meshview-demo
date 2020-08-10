@@ -5,35 +5,70 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width">
         <style>
+            html{
+                height: 100%;
+            }
             body{
+                height: 100%;
                 margin: 0;
-                padding: 0;
             }
             #cnv{
                 position: absolute;
-                display: block;
+                /*display: block;*/
+            }
+            #overlay{
+                position: absolute;
+                height: 100%;
+                width: 100%;
+                display: flex;
+                flex-direction: column;
             }
             #toprow{
-                width: 100%;
-                display: block;
+                flex: none;
+/*                width: 100%;
+                display: block;*/
                 background: #F0F0FF;
             }
+            #panels{
+                flex: auto;
+                display: flex;
+                overflow: hidden;
+            }
+            #meshpanel{
+                background: #F0F0FF;
+                width: 200px;
+                flex: none;
+                display: flex;
+                flex-direction: column;
+                overflow-x: hidden;
+                resize: horizontal;
+            }
+            #global{
+                flex: none;
+            }
+            #meshlist{
+                flex: auto;
+                padding-right: 0.5em;
+                overflow-x: auto;
+                overflow-y: scroll;
+                /*position: absolute;*/
+/*                width: 150px;*/
+/*                display: block;
+                overflow: scroll;
+                resize: horizontal;*/
+            }
+            #spacer{
+                flex: auto;
+            }
             #ptslist{
-                position: absolute;
+                flex: none;
+                /*position: absolute;*/
                 width: 150px;
                 /*display: none;*/
-                display: block;
+                /*display: block;*/
                 background: #F0F0FF;
                 overflow-y: scroll;
                 /*resize: horizontal;*/
-            }
-            #meshlist{
-                position: absolute;
-                width: 150px;
-                display: block;
-                background: #F0F0FF;
-                overflow: scroll;
-                resize: horizontal;
             }
             
             #cut_box{
@@ -72,7 +107,8 @@
             }
             #cloud_text{
                 width:280px;
-                height: 500px;
+                /*height: 500px;*/
+                height: 50vh;
             }
         </style>
         <script src="mesh.js"></script>
@@ -126,20 +162,35 @@
             var progs;
             function init(){
                 var cnv=document.getElementById("cnv");
-                cnv.width=window.innerWidth;
-                cnv.height=window.innerHeight-cnv.offsetTop-1;
+                cnv.width=window.innerWidth-1;
+                cnv.height=window.innerHeight-1;
                 
-                var lst=document.getElementById("ptslist");
-                lst.style.height=(window.innerHeight-lst.offsetTop-1)+"px";
-                lst.style.left=(window.innerWidth-lst.offsetWidth-1)+"px";
-                
-                lst=document.getElementById("meshlist");
-                lst.style.height=(window.innerHeight-lst.offsetTop-1)+"px";
+//                var lst=document.getElementById("ptslist");
+//                lst.style.height=(window.innerHeight-lst.offsetTop-1)+"px";
+//                lst.style.left=(window.innerWidth-lst.offsetWidth-1)+"px";
+//                
+//                lst=document.getElementById("meshlist");
+//                lst.style.height=(window.innerHeight-lst.offsetTop-1)+"px";
         
                 gl=cnv.getContext("webgl",{stencil:true,alpha:false/*,premultipliedAlpha:false*/});
                 gl.clearColor(1,1,1,1);
 
                 progs=buildshaders(gl);
+                
+                window.addEventListener("resize",resize);
+            }
+
+            var resizescheduled=false;
+            function resize(){
+                var cnv=document.getElementById("cnv");
+                cnv.width=window.innerWidth-1;
+                cnv.height=window.innerHeight-1;
+                gl.viewport(0,0,cnv.width,cnv.height);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                if(!resizescheduled){
+                    resizescheduled=true;
+                    setTimeout(function(){resizescheduled=false;redraw();},500);
+                }
             }
             
             function imgLoad(event){
@@ -668,11 +719,12 @@
                 function hex(x){
                     return ("0"+x.toString(16)).slice(-2);
                 }
-                var table="<table><tr>"+
-                        "<td colspan='3'><button onclick='meshshowall()'>Show</button><br>"+
-                        "<button onclick='meshtranall()'>Transparent</button><br>"+
-                        "<button onclick='meshhideall()'>Hide</button></td>"+
-                        "</tr>";
+//                var table="<table><tr>"+
+//                        "<td colspan='3'><button onclick='meshshowall()'>Show</button><br>"+
+//                        "<button onclick='meshtranall()'>Transparent</button><br>"+
+//                        "<button onclick='meshhideall()'>Hide</button></td>"+
+//                        "</tr>";
+                var table="<table>";
                 atlas.forEach(function(elem,idx){
 //                    table+="<tr>"+
 //                            "<td><input type='checkbox' checked id='m"+idx+"' onchange='mtoggle("+idx+")'></td>"+
@@ -691,39 +743,39 @@
                 table+="</table>";
                 document.getElementById("meshlist").innerHTML=table;
             }
-            function meshshowall(){
-                for(var i=0;i<atlas.length;i++){
-                    atlas[i].visibility=1;
-                    document.getElementById("v"+i).value=20;
-//                    atlas[i].enabled=true;
-//                    atlas[i].transparent=false;
-//                    document.getElementById("m"+i).checked=true;
-//                    document.getElementById("t"+i).checked=false;
-                }
-                redraw();
-            }
-            function meshtranall(){
-                for(var i=0;i<atlas.length;i++){
-                    atlas[i].visibility=0.05;
-                    document.getElementById("v"+i).value=1;
-//                    atlas[i].enabled=true;
-//                    atlas[i].transparent=true;
-//                    document.getElementById("m"+i).checked=true;
-//                    document.getElementById("t"+i).checked=true;
-                }
-                redraw();
-            }
-            function meshhideall(){
-                for(var i=0;i<atlas.length;i++){
-                    atlas[i].visibility=0;
-                    document.getElementById("v"+i).value=0;
-//                    atlas[i].enabled=false;
-//                    atlas[i].transparent=false;
-//                    document.getElementById("m"+i).checked=false;
-//                    document.getElementById("t"+i).checked=false;
-                }
-                redraw();
-            }
+//            function meshshowall(){
+//                for(var i=0;i<atlas.length;i++){
+//                    atlas[i].visibility=1;
+//                    document.getElementById("v"+i).value=20;
+////                    atlas[i].enabled=true;
+////                    atlas[i].transparent=false;
+////                    document.getElementById("m"+i).checked=true;
+////                    document.getElementById("t"+i).checked=false;
+//                }
+//                redraw();
+//            }
+//            function meshtranall(){
+//                for(var i=0;i<atlas.length;i++){
+//                    atlas[i].visibility=0.05;
+//                    document.getElementById("v"+i).value=1;
+////                    atlas[i].enabled=true;
+////                    atlas[i].transparent=true;
+////                    document.getElementById("m"+i).checked=true;
+////                    document.getElementById("t"+i).checked=true;
+//                }
+//                redraw();
+//            }
+//            function meshhideall(){
+//                for(var i=0;i<atlas.length;i++){
+//                    atlas[i].visibility=0;
+//                    document.getElementById("v"+i).value=0;
+////                    atlas[i].enabled=false;
+////                    atlas[i].transparent=false;
+////                    document.getElementById("m"+i).checked=false;
+////                    document.getElementById("t"+i).checked=false;
+//                }
+//                redraw();
+//            }
 //            function mtoggle(idx){
 //                atlas[idx].enabled=document.getElementById("m"+idx).checked;
 //                redraw();
@@ -744,10 +796,22 @@
                 redraw();
             }
             
+            function setGlobal(event){
+                var visibility=event.target.valueAsNumber/20;
+                for(var i=0;i<atlas.length;i++){
+                    atlas[i].visibility=visibility;
+                    document.getElementById("v"+i).value=event.target.value;
+                }
+                redraw();
+            }
+            
             var firstCut=true;
             function toggleCut(event){
                 cut_box.style.display=event.target.checked?"block":"none";
-                if(firstCut)cut_box.style.left=document.getElementById("meshlist").offsetWidth+"px";
+                if(firstCut){
+                    cut_box.style.left=document.getElementById("meshlist").offsetWidth+"px";
+                    cut_box.style.top=document.getElementById("meshpanel").offsetTop+"px";
+                }
                 firstCut=false;
                 redraw();
             }
@@ -841,7 +905,10 @@
             var firstCloud=true;
             function simple_open(){
                 document.getElementById("simple_cloud").style.display="block";
-                if(firstCloud)simple_cloud.style.left=document.getElementById("meshlist").offsetWidth+"px";
+                if(firstCloud){
+                    simple_cloud.style.left=document.getElementById("meshlist").offsetWidth+"px";
+                    simple_cloud.style.top=document.getElementById("meshpanel").offsetTop+"px";
+                }
                 firstCloud=false;
             }
             function simple_close(){
@@ -912,21 +979,27 @@
         </script>
     </head>
     <body onload="startup()">
-        <div id="toprow">
-            <label for="scale">Scale:</label><input type="range" id="scale" min="1" max="10" value="4" oninput="redraw()">
-            <input type="checkbox" id="cut" onchange="toggleCut(event)"><label for="cut">Cut</label>
-<!--            <input type="range" id="cutp" min="-100" max="100" oninput="redraw()">
-            <input type="range" id="cuth" min="-180" max="180" oninput="redraw()">
-            <input type="range" id="cutv" min="-90" max="90" oninput="redraw()">-->
-            | Cloud: (<a href="example.json"  >example</a>)
-            <input type="file" accept="text/json" onchange="loadfile(event)">
-            <button onclick="simple_open()">Cloud from coordinates</button>
-            <input type="range" id="psize" min="1" max="10" value="2" oninput="redraw()"><label for="psize">Point size</label>
-            <div id="counter" style="display:block;float:right"></div>
+        <!--<canvas id="cnv" onmousedown="mdown(event)" onmousemove="mmove(event)" onmouseup="mup(event)" onmouseout="mout(event)"></canvas>-->
+        <canvas id="cnv"></canvas>
+        <div id="overlay">
+            <div id="toprow">
+                <label for="scale">Scale:</label><input type="range" id="scale" min="1" max="10" value="3" oninput="redraw()">
+                <input type="checkbox" id="cut" onchange="toggleCut(event)"><label for="cut">Cut</label>
+                | Cloud: <!--(<a href="example.json"  >example</a>)-->
+                <input type="file" accept="text/json" onchange="loadfile(event)">
+                <button onclick="simple_open()">Cloud from coordinates</button>
+                <input type="range" id="psize" min="1" max="10" value="2" oninput="redraw()"><label for="psize">Point size</label>
+                <div id="counter" style="display:block;float:right"></div>
+            </div>
+            <div id="panels">
+                <div id="meshpanel">
+                    <div id="global" style="display: flex">All:<input type="range" min="0" max="20" value="20" oninput="setGlobal(event)" style="width:100%"></div>
+                    <div id="meshlist"></div>
+                </div>
+                <div id="spacer" onmousedown="mdown(event)" onmousemove="mmove(event)" onmouseup="mup(event)" onmouseout="mout(event)"></div>
+                <div id="ptslist"><table id="ptstable"></table></div>
+            </div>
         </div>
-        <canvas id="cnv" onmousedown="mdown(event)" onmousemove="mmove(event)" onmouseup="mup(event)" onmouseout="mout(event)"></canvas>
-        <div id="ptslist"><table id="ptstable"></table></div>
-        <div id="meshlist"></div>
         <div id="cut_box">
             <div id="cut_handle">Cut controls</div>
             <hr>
