@@ -4,7 +4,7 @@ function Points(data){
     this.r=data.r;
     this.g=data.g;
     this.b=data.b;
-    this.a=data.hasOwnProperty("a")?data.a:100;
+    this.a=data.hasOwnProperty("a")?data.a:1;
     this.name=data.name;
     this.array=new Float32Array(data.triplets);
     this.enabled=true;

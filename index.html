@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>NXTView</title>
+        <title>NXTView v0.8</title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width">
         <style>
@@ -24,6 +24,7 @@
                 flex-direction: column;
             }
             #toprow{
+                padding: 5px;
                 flex: none;
 /*                width: 100%;
                 display: block;*/
@@ -35,6 +36,8 @@
                 overflow: hidden;
             }
             #meshpanel{
+                padding: 5px;
+                padding-right: 0;
                 background: #F0F0FF;
                 width: 200px;
                 flex: none;
@@ -46,7 +49,7 @@
             #global{
                 flex: none;
             }
-            #meshlist{
+            #tree{
                 flex: auto;
                 padding-right: 0.5em;
                 overflow-x: auto;
@@ -61,6 +64,7 @@
                 flex: auto;
             }
             #ptslist{
+                padding: 5px;
                 flex: none;
                 /*position: absolute;*/
                 width: 150px;
@@ -110,6 +114,52 @@
                 /*height: 500px;*/
                 height: 50vh;
             }
+            
+            ul{
+                padding-left: 1em;
+                list-style-type: none;
+            }
+            li{
+                position: relative;
+                /*padding-left: 2em;*/
+/*                list-style-position: outside;
+                text-indent: -3em;*/
+            }
+            .litem{
+                white-space: nowrap;
+            }
+            li.leaf::before{
+                content: "o";
+                position:absolute;
+                left:-1em;
+                top:3px;
+            }
+            li.open::before{
+                content: "v";
+                position:absolute;
+                left:-1em;
+                top:3px;
+            }
+            li.closed::before{
+                content: ">";
+                position:absolute;
+                left:-1em;
+                top:3px;
+            }
+            input[type=color]{
+                flex: none;
+                width: 1.5em;
+            }
+            li > span > input[type=range]{
+                position:relative;
+                width: 4em;
+            }
+            li.mesh > span > input[type=range]{
+                top:2px;
+            }
+            li.nomesh > span > input[type=range]{
+                top:3px;
+            }
         </style>
         <script src="mesh.js"></script>
         <script src="points.js"></script>
@@ -136,26 +186,108 @@
                 init();
                 var xhr=new XMLHttpRequest();
                 xhr.open("GET",atlasroot+".json");
+                xhr.responseType="json";
                 xhr.onload=jsonready;
                 xhr.send();
             }
             
-            var atlas;
-            var loading=0;
+            var atlas=new Map();
+            var total=0;
+            var loaded=0;
             function jsonready(event){
-                atlas=JSON.parse(event.target.responseText);
+                function walk(json,list,path){
+                    for(let id of path){
+                        let p=atlas.get(id);
+                        if(!p.children)
+                            p.children=[];
+                        p.children.push(json.id);
+                    }
+                    let node={};
+                    atlas.set(json.id,node);
+                    let litem=document.createElement("li");
+                    let li=document.createElement("span");
+                    li.className="litem";
+                    litem.appendChild(li);
+                    if(json.color){
+                        let color=document.createElement("input");
+                        node.c_color=color;
+                        color.type="color";
+                        color.value="#"+json.color;
+                        color.oninput=redraw;
+                        li.appendChild(color);
+                    }
+                    let range=document.createElement("input");
+                    range.type="range";
+                    range.value=range.max=20;
+                    range.step=1;
+                    range.oninput=slide;
+                    li.appendChild(range);
+                    node.c_visibility=range;
+                    if(!json.children){
+                        litem.className="leaf";
+                        li.appendChild(document.createTextNode(json.name));
+                    }else{
+//                        li.className="junction open";
+                        litem.className=json.color?"open mesh":"open nomesh";
+//                        li.className=json.color?"open mesh":"open";
+                        let b=document.createElement("button");
+                        b.innerText=json.name;
+                        b.onclick=openclose;
+                        li.appendChild(b);
+                        let ul=document.createElement("ul");
+                        path.push(json.id);
+                        for(let child of json.children)
+                            walk(child,ul,path);
+                        path.pop();
+                        litem.appendChild(ul);
+                    }
+                    list.appendChild(litem);
+                }
+                for(let node of event.target.response)
+                    walk(node,document.getElementById("tree"),[]);
+                
                 atlas.forEach(function(elem,idx){
-                    var img=document.createElement("img");
-                    img.onload=imgLoad;
-                    img.src=atlasroot+"/"+elem.idx+".png";
-                    img.atlasindex=idx;
+                    if(elem.c_color){
+                        var img=document.createElement("img");
+                        img.onload=imgLoad;
+                        img.src=atlasroot+"/"+idx+".png";
+                        img.atlasindex=idx;
+                        total++;
+                    }
                 });
                 
-                meshtable();
                 progress();
             }
             function progress(){
-                document.getElementById("counter").innerHTML=loading+"/"+atlas.length;
+                document.getElementById("counter").innerHTML=loaded+"/"+total;
+            }
+            function openclose(event){
+                let li=event.target.parentNode.parentNode;
+                let cl=li.classList;
+                if(!cl.replace("closed","open")){
+                    cl.replace("open","closed");
+//                    let os=li.getElementsByClassName("open");
+//                    while(os.length>0)
+//                        os.item(0).classList.replace("open","closed");
+//                    let lis=li.getElementsByTagName("ul");
+//                    for(let i=0;i<lis.length;i++)
+//                        lis.item(i).hidden=true;;
+                    li.getElementsByTagName("ul").item(0).hidden=true;
+                }else{
+                    li.getElementsByTagName("ul").item(0).hidden=false;
+                }
+            }
+            function slide(event){
+                let p=event.target.parentNode.parentNode;
+//                if(p.classList.contains("mesh"))
+//                    p.getElementsByTagName("input")[0].disabled=event.target.valueAsNumber===0;
+                if(p.classList.contains("closed") || p.classList.contains("nomesh")){
+                    let rs=p.getElementsByTagName("input");
+                    for(let i=0;i<rs.length;i++)
+                        if(rs.item(i).type==="range")
+                            rs.item(i).value=event.target.value;
+                }
+                redraw();
             }
             
             var gl;
@@ -194,7 +326,7 @@
             }
             
             function imgLoad(event){
-                loading++;
+                loaded++;
                 progress();
                 var img=event.target;
                 var canvas=document.createElement("canvas");
@@ -213,7 +345,7 @@
                 var mesh=new Mesh(raw.buffer);
                 mesh.createBuffers(gl);
                 
-                atlas[img.atlasindex].mesh=mesh;
+                atlas.get(img.atlasindex).mesh=mesh;
 
                 redraw();
             }
@@ -264,15 +396,21 @@
                 var maxy=-Number.MAX_VALUE;
                 var maxz=-Number.MAX_VALUE;
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.visibility>0){
-//                    if(elem.mesh){
-                        nope=false;
-                        if(minx>elem.mesh.minx)minx=elem.mesh.minx;
-                        if(miny>elem.mesh.miny)miny=elem.mesh.miny;
-                        if(minz>elem.mesh.minz)minz=elem.mesh.minz;
-                        if(maxx<elem.mesh.maxx)maxx=elem.mesh.maxx;
-                        if(maxy<elem.mesh.maxy)maxy=elem.mesh.maxy;
-                        if(maxz<elem.mesh.maxz)maxz=elem.mesh.maxz;
+                    if(elem.mesh){
+                        elem.a=elem.c_visibility.valueAsNumber/20;
+                        if(elem.a>0){
+                            nope=false;
+                            if(minx>elem.mesh.minx)minx=elem.mesh.minx;
+                            if(miny>elem.mesh.miny)miny=elem.mesh.miny;
+                            if(minz>elem.mesh.minz)minz=elem.mesh.minz;
+                            if(maxx<elem.mesh.maxx)maxx=elem.mesh.maxx;
+                            if(maxy<elem.mesh.maxy)maxy=elem.mesh.maxy;
+                            if(maxz<elem.mesh.maxz)maxz=elem.mesh.maxz;
+                            var c=elem.c_color.value;
+                            elem.r=parseInt(c.substring(1,3),16)/255;
+                            elem.g=parseInt(c.substring(3,5),16)/255;
+                            elem.b=parseInt(c.substring(5,7),16)/255;
+                        }
                     }
                 });
                 
@@ -371,8 +509,8 @@
                     
                     var color=gl.getUniformLocation(prg,"color");
                     points.forEach(function(elem){
-                        if(elem.enabled && elem.a===100 && elem.count>0){
-                            gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,1);
+                        if(elem.enabled && elem.a===1 && elem.count>0){
+                            gl.uniform4f(color,elem.r,elem.g,elem.b,1);
                             elem.drawArray(gl,coords);
                         }
                     });
@@ -380,8 +518,8 @@
                     gl.enable(gl.BLEND);
                     gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
                     points.forEach(function(elem){
-                        if(elem.enabled && elem.a!==100 && elem.count>0){
-                            gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,elem.a/100);
+                        if(elem.enabled && elem.a!==1 && elem.count>0){
+                            gl.uniform4f(color,elem.r,elem.g,elem.b,elem.a);
                             elem.drawArray(gl,coords);
                         }
                     });
@@ -422,8 +560,8 @@
                 
                     var color=gl.getUniformLocation(prg,"color");
                     points.forEach(function(elem){
-                        if(elem.enabled && elem.a===100 && elem.count>0){
-                            gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,1);
+                        if(elem.enabled && elem.a===1 && elem.count>0){
+                            gl.uniform4f(color,elem.r,elem.g,elem.b,1);
                             elem.drawArray(gl,coords);
                         }
                     });
@@ -432,8 +570,8 @@
                     gl.enable(gl.BLEND);
                     gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
                     points.forEach(function(elem){
-                        if(elem.enabled && elem.a!==100 && elem.count>0){
-                            gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,elem.a/100);
+                        if(elem.enabled && elem.a!==1 && elem.count>0){
+                            gl.uniform4f(color,elem.r,elem.g,elem.b,elem.a);
                             elem.drawArray(gl,coords);
                         }
                     });
@@ -461,8 +599,8 @@
                 gl.enable(gl.CULL_FACE);
                 gl.cullFace(gl.BACK);
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.visibility===1){
-                        gl.uniform3f(color,elem.r/255,elem.g/255,elem.b/255);
+                    if(elem.mesh && elem.a===1){
+                        gl.uniform3f(color,elem.r,elem.g,elem.b);
                         elem.mesh.drawElements(gl,coords,normals);
                     }
                 });
@@ -505,8 +643,8 @@
                 gl.enable(gl.CULL_FACE);
                 gl.cullFace(gl.BACK);
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.visibility===1){
-                        gl.uniform3f(color,elem.r/255,elem.g/255,elem.b/255);
+                    if(elem.mesh && elem.a===1){
+                        gl.uniform3f(color,elem.r,elem.g,elem.b);
                         elem.mesh.drawElements(gl,coords,normals);
                     }
                 });
@@ -551,8 +689,8 @@
                 gl.stencilMask(1);
                 
                 atlas.forEach(function(elem){
-                    if(elem.mesh && elem.visibility===1){
-                        gl.uniform3f(color,elem.r/255,elem.g/255,elem.b/255);
+                    if(elem.mesh && elem.a===1){
+                        gl.uniform3f(color,elem.r,elem.g,elem.b);
                         
                         gl.clear(gl.STENCIL_BUFFER_BIT);
                         gl.colorMask(false,false,false,false);
@@ -631,21 +769,21 @@
                 gl.enable(gl.CULL_FACE);
                 gl.cullFace(gl.FRONT);
                 atlas.forEach(function(elem){
-                    var f=elem.visibility;
+                    var f=elem.a;
                     if(elem.mesh && f>0 && f<1){
 //                        gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,f);
 //                        gl.uniform4f(color,elem.r/255*f,elem.g/255*f,elem.b/255*f,f);
-                        gl.uniform4f(color,elem.r/255*(a+f),elem.g/255*(a+f),elem.b/255*(a+f),f);
+                        gl.uniform4f(color,elem.r*(a+f),elem.g*(a+f),elem.b*(a+f),f);
                         elem.mesh.drawElements(gl,coords);
                     }
                 });
                 gl.cullFace(gl.BACK);
                 atlas.forEach(function(elem){
-                    var f=elem.visibility;
+                    var f=elem.a;
                     if(elem.mesh && f>0 && f<1){
 //                        gl.uniform4f(color,elem.r/255,elem.g/255,elem.b/255,f);
 //                        gl.uniform4f(color,elem.r/255*f,elem.g/255*f,elem.b/255*f,f);
-                        gl.uniform4f(color,elem.r/255*(a+f),elem.g/255*(a+f),elem.b/255*(a+f),f);
+                        gl.uniform4f(color,elem.r*(a+f),elem.g*(a+f),elem.b*(a+f),f);
                         elem.mesh.drawElements(gl,coords);
                     }
                 });
@@ -687,6 +825,7 @@
                     data.forEach(function(elem){
                         var idx=points.length;
                         table+="<tr><td><input type='checkbox' checked='true' id='c"+idx+"' onchange='toggle("+idx+")'></td><td>"+elem.name+"</td></tr>";
+                        elem.r/=255;elem.g/=255;elem.b/=255;
                         var pts=new Points(elem);
                         pts.createBuffer(gl);
                         points.push(pts);
@@ -715,34 +854,34 @@
                 redraw();
             }
             
-            function meshtable(){
-                function hex(x){
-                    return ("0"+x.toString(16)).slice(-2);
-                }
-//                var table="<table><tr>"+
-//                        "<td colspan='3'><button onclick='meshshowall()'>Show</button><br>"+
-//                        "<button onclick='meshtranall()'>Transparent</button><br>"+
-//                        "<button onclick='meshhideall()'>Hide</button></td>"+
-//                        "</tr>";
-                var table="<table>";
-                atlas.forEach(function(elem,idx){
+//            function meshtable(){
+//                function hex(x){
+//                    return ("0"+x.toString(16)).slice(-2);
+//                }
+////                var table="<table><tr>"+
+////                        "<td colspan='3'><button onclick='meshshowall()'>Show</button><br>"+
+////                        "<button onclick='meshtranall()'>Transparent</button><br>"+
+////                        "<button onclick='meshhideall()'>Hide</button></td>"+
+////                        "</tr>";
+//                var table="<table>";
+//                atlas.forEach(function(elem,idx){
+////                    table+="<tr>"+
+////                            "<td><input type='checkbox' checked id='m"+idx+"' onchange='mtoggle("+idx+")'></td>"+
+////                            "<td><input type='checkbox' id='t"+idx+"' onchange='ttoggle("+idx+")'></td>"+
+////                            "<td>"+elem.name+"</td>"+
+////                            "</tr>";
 //                    table+="<tr>"+
-//                            "<td><input type='checkbox' checked id='m"+idx+"' onchange='mtoggle("+idx+")'></td>"+
-//                            "<td><input type='checkbox' id='t"+idx+"' onchange='ttoggle("+idx+")'></td>"+
+//                            "<td><input type='color' id='c"+idx+"' value='#"+hex(elem.r)+hex(elem.g)+hex(elem.b)+"' oninput='cchange("+idx+")' style='width:20px'></td>"+
+//                            "<td><input type='range' id='v"+idx+"' min='0' max='20' value='20' oninput='vchange("+idx+")' style='width:50px'></td>"+
 //                            "<td>"+elem.name+"</td>"+
 //                            "</tr>";
-                    table+="<tr>"+
-                            "<td><input type='color' id='c"+idx+"' value='#"+hex(elem.r)+hex(elem.g)+hex(elem.b)+"' oninput='cchange("+idx+")' style='width:20px'></td>"+
-                            "<td><input type='range' id='v"+idx+"' min='0' max='20' value='20' oninput='vchange("+idx+")' style='width:50px'></td>"+
-                            "<td>"+elem.name+"</td>"+
-                            "</tr>";
-//                    elem.enabled=true;
-//                    elem.transparent=false;
-                    elem.visibility=1;
-                });
-                table+="</table>";
-                document.getElementById("meshlist").innerHTML=table;
-            }
+////                    elem.enabled=true;
+////                    elem.transparent=false;
+//                    elem.visibility=1;
+//                });
+//                table+="</table>";
+//                document.getElementById("meshlist").innerHTML=table;
+//            }
 //            function meshshowall(){
 //                for(var i=0;i<atlas.length;i++){
 //                    atlas[i].visibility=1;
@@ -797,11 +936,10 @@
             }
             
             function setGlobal(event){
-                var visibility=event.target.valueAsNumber/20;
-                for(var i=0;i<atlas.length;i++){
-                    atlas[i].visibility=visibility;
-                    document.getElementById("v"+i).value=event.target.value;
-                }
+                var visibility=event.target.value;
+                atlas.forEach(function(elem){
+                    elem.c_visibility.value=visibility;
+                });
                 redraw();
             }
             
@@ -809,7 +947,7 @@
             function toggleCut(event){
                 cut_box.style.display=event.target.checked?"block":"none";
                 if(firstCut){
-                    cut_box.style.left=document.getElementById("meshlist").offsetWidth+"px";
+                    cut_box.style.left=document.getElementById("meshpanel").offsetWidth+"px";
                     cut_box.style.top=document.getElementById("meshpanel").offsetTop+"px";
                 }
                 firstCut=false;
@@ -906,7 +1044,7 @@
             function simple_open(){
                 document.getElementById("simple_cloud").style.display="block";
                 if(firstCloud){
-                    simple_cloud.style.left=document.getElementById("meshlist").offsetWidth+"px";
+                    simple_cloud.style.left=document.getElementById("meshpanel").offsetWidth+"px";
                     simple_cloud.style.top=document.getElementById("meshpanel").offsetTop+"px";
                 }
                 firstCloud=false;
@@ -960,9 +1098,9 @@
                             add();
                             var colors=line.match(/^RGB\s*([\d\.]+)[\s,]+([\d\.]+)[\s,]+([\d\.]+)/);
                             if(colors){
-                                r=Math.max(0,Math.min(255,parseFloat(colors[1])*255));
-                                g=Math.max(0,Math.min(255,parseFloat(colors[2])*255));
-                                b=Math.max(0,Math.min(255,parseFloat(colors[3])*255));
+                                r=Math.max(0,Math.min(1,parseFloat(colors[1])));
+                                g=Math.max(0,Math.min(1,parseFloat(colors[2])));
+                                b=Math.max(0,Math.min(1,parseFloat(colors[3])));
                             }else
                                 if(line[0]==="#")name=line.substring(1).trim();
                         }
@@ -993,8 +1131,12 @@
             </div>
             <div id="panels">
                 <div id="meshpanel">
-                    <div id="global" style="display: flex">All:<input type="range" min="0" max="20" value="20" oninput="setGlobal(event)" style="width:100%"></div>
-                    <div id="meshlist"></div>
+                    <div id="global" style="display: flex">All:<input type="range" min="0" max="20" value="20" step="1" oninput="setGlobal(event)" style="width:100%"></div>
+                    <!--<div id="meshlist"></div>-->
+                    <ul id="tree"></ul>
+                    <div>
+                        <span style="float:right">Resize panel here =&gt;</span>
+                    </div>
                 </div>
                 <div id="spacer" onmousedown="mdown(event)" onmousemove="mmove(event)" onmouseup="mup(event)" onmouseout="mout(event)"></div>
                 <div id="ptslist"><table id="ptstable"></table></div>
