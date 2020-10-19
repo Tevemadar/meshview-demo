@@ -1,7 +1,9 @@
 # MeshView-demo
 Mesh viewer with solid slicing and point cloud support.
 
-This is a [working example](https://tevemadar.github.io/meshview-demo/), under construction. Feel free to drag things around.
+This is a [working example](https://tevemadar.github.io/meshview-demo/), under construction. Feel free to drag things around.  
+Link for automatically loading the sample clouds (since v0.8a): https://tevemadar.github.io/meshview-demo/?cloud=example.json  
+(Multiple clouds can be specified too, like https://tevemadar.github.io/meshview-demo/?cloud=example.json&cloud=example.json - though it just loads the same clouds twice)
 
 A converter for STL meshes is provided at https://github.com/Tevemadar/MeshView-PackSTL
 

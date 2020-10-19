@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>NXTView v0.8</title>
+        <title>NXTView v0.8a</title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width">
         <style>
@@ -175,13 +175,16 @@
                     if(pair.length===0)return;
                     var parts=pair.split("=");
                     if(parts[0]==="atlas")atlasroot=parts[1];
-                    else{
-                        var control=document.getElementById(parts[0]);
-                        switch(control.type){
-                            case "range": control.value=parts[1];break;
-                            case "checkbox": control.checked=parts[1]==="true";break;
-                        }
+                    else if(parts[0]==="cloud"){
+                        autoload(parts[1]);
                     }
+//                    else{
+//                        var control=document.getElementById(parts[0]);
+//                        switch(control.type){
+//                            case "range": control.value=parts[1];break;
+//                            case "checkbox": control.checked=parts[1]==="true";break;
+//                        }
+//                    }
                 });
                 init();
                 var xhr=new XMLHttpRequest();
@@ -389,6 +392,7 @@
                 drawreq=false;
                 
                 var nope=true;
+                var nomesh=true;
                 var minx=Number.MAX_VALUE;
                 var miny=Number.MAX_VALUE;
                 var minz=Number.MAX_VALUE;
@@ -397,6 +401,7 @@
                 var maxz=-Number.MAX_VALUE;
                 atlas.forEach(function(elem){
                     if(elem.mesh){
+                        nomesh=false;
                         elem.a=elem.c_visibility.valueAsNumber/20;
                         if(elem.a>0){
                             nope=false;
@@ -415,6 +420,8 @@
                 });
                 
                 gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+                
+                if(nomesh)return;
                 
                 var center=ident();
                 
@@ -814,6 +821,28 @@
 //                };
 //                fr.readAsText(event.target.files[0]);
 //            }
+            function autoload(url){
+                var xhr=new XMLHttpRequest();
+                xhr.open("GET",url);
+                xhr.responseType="json";
+                xhr.onload=function(){
+                    var data=xhr.response;
+                    var table=points.length>0?document.getElementById("ptstable").innerHTML:
+                            "<tr><td><button onclick='showall()'>Show all</button></td><td><button onclick='hideall()'>Hide all</button></td></tr>";
+                    table+="<tr><td colspan='2' style='background-color:lightgray'>"+url+"</td></tr>";
+                    data.forEach(function(elem){
+                        var idx=points.length;
+                        table+="<tr><td><input type='checkbox' checked='true' id='c"+idx+"' onchange='toggle("+idx+")'></td><td>"+elem.name+"</td></tr>";
+                        elem.r/=255;elem.g/=255;elem.b/=255;
+                        var pts=new Points(elem);
+                        pts.createBuffer(gl);
+                        points.push(pts);
+                    });
+                    document.getElementById("ptstable").innerHTML=table;
+                    redraw();
+                };
+                xhr.send();
+            }
             function loadfile(event)
             {
                 var fr=new FileReader();
