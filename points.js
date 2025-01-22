@@ -7,7 +7,8 @@ function Points(data){
     this.a=data.hasOwnProperty("a")?data.a:1;
     this.name=data.name;
     this.array=new Float32Array(data.triplets);
-    this.enabled=true;
+//    this.enabled=true;
+    this.scale=1;
 }
 
 Points.prototype.createBuffer=function(gl){

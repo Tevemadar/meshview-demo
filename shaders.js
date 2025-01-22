@@ -14,101 +14,91 @@ function buildprogram(gl,vsrc,fsrc){
 function buildshaders(gl){
     return {
         solidcloud:buildprogram(gl,
-            "attribute vec3 coords;"+
+            `attribute vec3 coords;
 
-            "uniform mat4 alltrf;"+
-            "uniform float pointsize;"+
+            uniform mat4 alltrf;
+            uniform float pointsize;
 
-            "void main(void)"+
-            "{"+
-            "    gl_Position = vec4(coords, 1.)*alltrf;"+
-            "    gl_PointSize = pointsize;"+
-            "}",
-
-            "precision highp float;"+
-            "uniform vec4 color;"+
-            "void main(void)"+
-            "{"+
-            "    gl_FragColor=color;"+
-            "}"
-//            "precision highp float;"+
-//            "uniform vec3 color;"+
-//            "void main(void)"+
-//            "{"+
-//            "    gl_FragColor=vec4(color,1.);"+
-//            "}"
+            void main(void)
+            {
+                gl_Position = vec4(coords, 1.)*alltrf;
+                gl_PointSize = pointsize;
+            }`,
+        
+            `precision highp float;
+            uniform vec4 color;
+            void main(void)
+            {
+//                if(distance(gl_PointCoord,vec2(0.5,0.5))>=0.5)discard;
+                vec2 v=gl_PointCoord-vec2(0.5,0.5);
+                if(dot(v,v)>=0.25)discard;
+//                if(dot(gl_PointCoord-vec2(0.5,0.5),gl_PointCoord-vec2(0.5,0.5))>=0.25)discard;
+                gl_FragColor=color;
+            }`
         ),
         cutcloud:buildprogram(gl,
-            "attribute vec3 coords;"+
+            `attribute vec3 coords;
 
-            "uniform mat4 alltrf;"+
-            "uniform float pointsize;"+
+            uniform mat4 alltrf;
+            uniform float pointsize;
 
-            "uniform vec3 cutbase;"+
-            "uniform vec3 cutnormal;"+
+            uniform vec3 cutbase;
+            uniform vec3 cutnormal;
 
-            "varying float height;"+
-            "void main(void)"+
-            "{"+
-            "    height=dot(cutbase-coords,cutnormal);"+
-            "    gl_Position = vec4(coords, 1.)*alltrf;"+
-            "    gl_PointSize = pointsize;"+
-            "}",
-
-            "precision highp float;"+
-            "uniform vec4 color;"+
-            "varying float height;"+
-            "void main(void)"+
-            "{"+
-            "    if(height>=0.)discard;"+
-            "    gl_FragColor=color;"+
-            "}"
-//            "precision highp float;"+
-//            "uniform vec3 color;"+
-//            "varying float height;"+
-//            "void main(void)"+
-//            "{"+
-//            "    if(height>=0.)discard;"+
-//            "    gl_FragColor=vec4(color,1.);"+
-//            "}"
+            varying float height;
+            void main(void)
+            {
+                height=dot(cutbase-coords,cutnormal);
+                gl_Position = vec4(coords, 1.)*alltrf;
+                gl_PointSize = pointsize;
+            }`,
+        
+            `precision highp float;
+            uniform vec4 color;
+            varying float height;
+            void main(void)
+            {
+                if(height>=0.)discard;
+//                if(distance(gl_PointCoord,vec2(0.5,0.5))>=0.5)discard;
+                vec2 v=gl_PointCoord-vec2(0.5,0.5);
+                if(dot(v,v)>=0.25)discard;
+//                if(dot(gl_PointCoord-vec2(0.5,0.5),gl_PointCoord-vec2(0.5,0.5))>=0.25)discard;
+                gl_FragColor=color;
+            }`
         ),
         slicecloud:buildprogram(gl,
-            "attribute vec3 coords;"+
+            `attribute vec3 coords;
 
-            "uniform mat4 alltrf;"+
-            "uniform float pointsize;"+
+            uniform mat4 alltrf;
+            uniform float pointsize;
 
-            "uniform vec3 cutbase;"+
-            "uniform vec3 cutbase2;"+
-            "uniform vec3 cutnormal;"+
+            uniform vec3 cutbase;
+            uniform vec3 cutbase2;
+            uniform vec3 cutnormal;
 
-            "varying float height;"+
-            "varying float height2;"+
-            "void main(void)"+
-            "{"+
-            "    height=dot(cutbase-coords,cutnormal);"+
-            "    height2=dot(cutbase2-coords,cutnormal);"+
-            "    gl_Position = vec4(coords, 1.)*alltrf;"+
-            "    gl_PointSize = pointsize;"+
-            "}",
+            varying float height;
+            varying float height2;
+            void main(void)
+            {
+                height=dot(cutbase-coords,cutnormal);
+                height2=dot(cutbase2-coords,cutnormal);
+                gl_Position = vec4(coords, 1.)*alltrf;
+                gl_PointSize = pointsize;
+            }`,
 
-            "precision highp float;"+
-            "uniform vec4 color;"+
-            "varying float height;"+
-            "varying float height2;"+
-            "void main(void)"+
-            "{"+
-            "    if(height>=0. || height2<=0.)discard;"+
-            "    gl_FragColor=color;"+
-            "}"
-//            "precision highp float;"+
-//            "uniform vec3 color;"+
-//            "varying float height;"+
-//            "void main(void)"+
-//            "{"+
-//            "    if(height>=0.)discard;"+
-//            "    gl_FragColor=vec4(color,1.);"+
-//            "}"
+            `precision highp float;
+            uniform vec4 color;
+            varying float height;
+            varying float height2;
+            void main(void)
+            {
+                if(height>=0. || height2<=0.)discard;
+//                if(distance(gl_PointCoord,vec2(0.5,0.5))>=0.5)discard;
+                vec2 v=gl_PointCoord-vec2(0.5,0.5);
+                if(dot(v,v)>=0.25)discard;
+//                if(dot(gl_PointCoord-vec2(0.5,0.5),gl_PointCoord-vec2(0.5,0.5))>=0.25)discard;
+                gl_FragColor=color;
+            }`
         ),
         solidmesh:buildprogram(gl,
             "attribute vec3 coords;"+
